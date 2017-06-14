@@ -4,6 +4,7 @@ from keras import applications
 from keras import optimizers
 from keras.models import Model
 from keras.layers import Dropout, Dense, Flatten
+from keras.preprocessing.image import load_img, img_to_array
 from keras.utils import np_utils
 import numpy as np
 import os
@@ -25,42 +26,39 @@ nb_classes = 19
 # path to script and folders with images
 script_dir = os.path.dirname(os.path.abspath(__file__))
 data_set_dir = os.path.join(script_dir, 'data_set')
+test_set_dir = os.path.join(script_dir, 'test_set')
 
 set_size = len([0 for item in os.listdir(data_set_dir)])
-train_size = int(set_size * 0.8) - 1
-test_size = set_size - train_size
-
-x_train = np.zeros((train_size, 224, 224, 3))
-x_test = np.zeros((test_size, 224, 224, 3))
-y_train = np.zeros((train_size))
-y_test = np.zeros((test_size))
 
 train_set_file = 'train_set.csv'
 test_set_file = 'test_set.csv'
 
 
-def process_line(line):
-	x = np.array(line[1:-1])
-	x = x.astype('float32')
-	x /= 255
-	y = line[-1]
-	y = np_utils.to_categorical(y, nb_classes)
-	return x, y
+def process_image(path, file):
+	for i in range(nb_classes):
+		if file.startswith(styles_dict[i]):
+			if file.endswith('.jpg') or file.endswith('.jpeg'):
+				x = load_img(os.path.join(path, file),
+					target_size=(img_shape[0], img_shape[1]))
+				x = np.expand_dims(x, axis=0)
+				img_vector = np.reshape(x, (1,img_shape[0],img_shape[1],img_shape[2]))
+				x = img_vector
+				y = i
+				x = x.astype('float32')
+				x /= 255
+				y = np_utils.to_categorical(y, nb_classes)
+				return (x, y)
 
 def generator(path):
     while 1:
-        f = open(path)
-        for line in f:
-            # create numpy arrays of input data
-            # and labels, from each line in the file
-            x, y = process_line(line)
+        for file in os.listdir(path):
+            x, y = process_image(path, file)
             yield (x, y)
-        f.close()
 
 model = applications.VGG16(weights="imagenet", include_top=False, input_shape=img_shape)
 
 # freeze the layers which you don't want to train
-for layer in model.layers[:13]:
+for layer in model.layers[:14]:
 	layer.trainable = False
 
 # adding custom Layers 
@@ -83,11 +81,10 @@ model_final.compile(loss="categorical_crossentropy",
 print(model_final.summary())
 
 # train the model
-model_final.fit_generator(generator(train_set_file), steps_per_epoch=nb_steps,
-							  epochs=nb_epoch, validation_split=0.1, shuffle=True)
+model_final.fit_generator(generator(data_set_dir), steps_per_epoch=nb_steps, epochs=nb_epoch)
 
 # evaluate the accuracy
-scores = model_final.evaluate_generator(generator(test_set_file), steps=nb_steps)
+scores = model_final.evaluate_generator(generator(test_set_dir), steps=nb_steps)
 print("Test accuracy: %.2f%%" % (scores[1] * 100))
 
 # generate model description in json format
